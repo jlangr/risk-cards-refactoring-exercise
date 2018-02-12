@@ -13,12 +13,6 @@ class Trader {
     private int cardState;
     private int cardMode;
 
-    /*
-    public boolean canTrade() {
-        return getBestTrade(currentPlayer.getCards(), null) > 0;
-    }
-    */
-
     public int getBestTrade(List<Card> cards, Card[] bestResult) {
         Map<String, List<Card>> cardTypes = new HashMap<String, List<Card>>();
         for (Card card : cards) {

@@ -17,8 +17,6 @@ import static cards.Card.CANNON;
 import static cards.Card.CAVALRY;
 import static cards.Card.INFANTRY;
 import static cards.Card.WILDCARD;
-import static org.hamcrest.Matchers.nullValue;
-import static org.hamcrest.collection.IsArrayContainingInOrder.arrayContaining;
 
 public class ATrader {
     private Trader trader = new Trader();

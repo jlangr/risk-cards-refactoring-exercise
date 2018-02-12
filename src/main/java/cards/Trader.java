@@ -1,9 +1,11 @@
 package cards;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.stream.Stream;
+import static java.util.Arrays.asList;
+import static cards.Card.*;
+
+import static java.util.stream.Collectors.*;
 
 class Trader {
     public final static int CARD_INCREASING_SET = 0;
@@ -13,179 +15,174 @@ class Trader {
     private int cardState;
     private int cardMode;
 
-    /*
-    public boolean canTrade() {
-        return getBestTrade(currentPlayer.getCards(), null) > 0;
+    abstract class Scorer {
+        protected List<Card> cards;
+        public Scorer(List<Card> cards) { this.cards = cards; }
+        int value() { return getTradeAbsValue(types(cardsToScore()), getCardMode()); }
+        abstract List<Card> cardsToScore();
+        abstract boolean shouldScore();
     }
-    */
+
+    class UniqueScorer extends Scorer {
+        UniqueScorer(List<Card> cards) { super(cards); }
+        @Override List<Card> cardsToScore() { return firstOfEachType(cards); }
+        @Override boolean shouldScore() { return countUnique(cards) >= 3; }
+    }
+
+    class WildcardScorer extends Scorer {
+        public WildcardScorer(List<Card> cards) { super(cards); }
+        @Override List<Card> cardsToScore() { return getCards(cards, WILDCARD); }
+        @Override boolean shouldScore() { return count(types(cards), WILDCARD) >= 3; }
+    }
+
+    class TypeScorer extends Scorer {
+        private String cardType;
+
+        public TypeScorer(String cardType, List<Card> cards) {
+            super(cards);
+            this.cardType = cardType;
+        }
+
+        @Override List<Card> cardsToScore() {
+            return fill3(getCards(cards, cardType), getCards(cards, WILDCARD));
+        }
+
+        private List<Card> fill3(List<Card> cardList, List<Card> wildCards) {
+            return Stream.concat(cardList.stream(), wildCards.stream().limit(3 - cardList.size())).collect(toList());
+        }
+
+        @Override boolean shouldScore() {
+            return getCards(cards, cardType).size() + getCards(cards, WILDCARD).size() >= 3;
+        }
+    }
 
     public int getBestTrade(List<Card> cards, Card[] bestResult) {
-        Map<String, List<Card>> cardTypes = new HashMap<String, List<Card>>();
-        for (Card card : cards) {
-            List<Card> cardType = cardTypes.get(card.getType());
-            if (cardType == null) {
-                cardType = new ArrayList<Card>();
-                cardTypes.put(card.getType(), cardType);
-            }
-            cardType.add(card);
-        }
-        Card carda = null;
-        Card cardb = null;
-        Card cardc = null;
         int bestValue = 0;
-        if (cardTypes.size() >= 3) {
-            carda = getCard(cardTypes, Card.CANNON);
-            if (carda == null) {
-                carda = getCard(cardTypes, Card.WILDCARD);
-            }
-            cardb = getCard(cardTypes, Card.CAVALRY);
-            if (cardb == null) {
-                cardb = getCard(cardTypes, Card.WILDCARD);
-            }
-            cardc = getCard(cardTypes, Card.INFANTRY);
-            if (cardc == null) {
-                cardc = getCard(cardTypes, Card.WILDCARD);
-            }
-            bestValue = getTradeAbsValue(carda.getType(), cardb.getType(), cardc.getType(), getCardMode());
-            if (bestValue > 0) {
-                if (bestResult == null) {
+        for (Scorer scorer: asList(new UniqueScorer(cards), new WildcardScorer(cards),
+                new TypeScorer(CANNON, cards), new TypeScorer(INFANTRY, cards), new TypeScorer(CAVALRY, cards)))
+            if (scorer.shouldScore() && scorer.value() > bestValue) {
+                bestValue = scorer.value();
+                if (bestResult == null)
                     return bestValue;
-                }
-                bestResult[0] = carda;
-                bestResult[1] = cardb;
-                bestResult[2] = cardc;
+                populateBestResult(bestResult, scorer.cardsToScore());
             }
-        }
-        List<Card> wildCards = cardTypes.get(Card.WILDCARD);
-        int wildCardCount = wildCards == null ? 0 : wildCards.size();
-        for (Map.Entry<String, List<Card>> entry : cardTypes.entrySet()) {
-            carda = null;
-            if (entry.getKey().equals(Card.WILDCARD)) {
-                if (wildCardCount >= 3) {
-                    carda = wildCards.get(0);
-                    cardb = wildCards.get(1);
-                    cardc = wildCards.get(2);
-                }
-            } else {
-                List<Card> cardList = entry.getValue();
-                if (cardList.size() + wildCardCount >= 3) {
-                    carda = cardList.get(0);
-                    cardb = cardList.size() > 1 ? cardList.get(1) : wildCards.get(0);
-                    cardc = cardList.size() > 2 ? cardList.get(2) : wildCards.get(2 - cardList.size());
-                }
-            }
-            if (carda != null) {
-                int val = getTradeAbsValue(carda.getType(), cardb.getType(), cardc.getType(), getCardMode());
-                if (val > bestValue) {
-                    bestValue = val;
-                    if (bestResult == null) {
-                        return bestValue;
-                    }
-                    bestResult[0] = carda;
-                    bestResult[1] = cardb;
-                    bestResult[2] = cardc;
-                }
-            }
-        }
         return bestValue;
     }
 
+    private List<String> types(List<Card> cards) {
+        return cards.stream().map(Card::getType).collect(toList());
+    }
 
-    public int getTradeAbsValue(String c1, String c2, String c3, int cardMode) {
-        int armies = 0;
+    private void populateBestResult(Card[] bestResult, List<Card> cards) {
+        bestResult[0] = cards.get(0);
+        bestResult[1] = cards.get(1);
+        bestResult[2] = cards.get(2);
+    }
 
-        // we shift all wildcards to the front
-        if (!c1.equals(Card.WILDCARD)) {
-            String n4 = c3;
-            c3 = c1;
-            c1 = n4;
-        }
-        if (!c2.equals(Card.WILDCARD)) {
-            String n4 = c3;
-            c3 = c2;
-            c2 = n4;
-        }
-        if (!c1.equals(Card.WILDCARD)) {
-            String n4 = c2;
-            c2 = c1;
-            c1 = n4;
-        }
+    private Card getCardOrWildcard(List<Card> cards, String type) {
+        Card card = getCard(cards, type);
+        if (card != null) return card;
+        return getCard(cards, WILDCARD);
+    }
 
-        if (cardMode == CARD_INCREASING_SET) {
-            if (
-                    c1.equals(Card.WILDCARD) ||
-                    (c1.equals(c2) && c1.equals(c3)) ||
-                    (!c1.equals(c2) && !c1.equals(c3) && !c2.equals(c3))
-                    ) {
-                armies = getNewCardState();
-            }
-        } else if (cardMode == CARD_FIXED_SET) {
-            // ALL THE SAME or 'have 1 wildcard and 2 the same'
-            if ((c1.equals(c2) || c1.equals(Card.WILDCARD)) && c2.equals(c3)) {
-                if (c3.equals(Card.INFANTRY)) {
-                    armies = 4;
-                } else if (c3.equals(Card.CAVALRY)) {
-                    armies = 6;
-                } else if (c3.equals(Card.CANNON)) {
-                    armies = 8;
-                } else { // (c1.equals( Card.WILDCARD ))
-                    armies = 12; // Incase someone puts 3 wildcards into his set
-                }
-            }
-            // ALL CARDS ARE DIFFERENT (can have 1 wildcard) or 2 wildcards and a 3rd card
-            else if (
-                    (c1.equals(Card.WILDCARD) && c2.equals(Card.WILDCARD)) ||
-                    (!c1.equals(c2) && !c2.equals(c3) && !c1.equals(c3))
-                    ) {
-                armies = 10;
-            }
-        } else { // (cardMode==CARD_ITALIANLIKE_SET)
-            if (c1.equals(c2) && c1.equals(c3)) {
-                // All equal
-                if (c1.equals(Card.CAVALRY)) {
-                    armies = 8;
-                } else if (c1.equals(Card.INFANTRY)) {
-                    armies = 6;
-                } else if (c1.equals(Card.CANNON)) {
-                    armies = 4;
-                } else { // (c1.equals( Card.WILDCARD ))
-                    armies = 0; // Incase someone puts 3 wildcards into his set
-                }
-            } else if (!c1.equals(c2) && !c2.equals(c3) && !c1.equals(c3) && !c1.equals(Card.WILDCARD)) {
-                armies = 10;
-            }
-            //All the same w/1 wildcard
-            else if (c1.equals(Card.WILDCARD) && c2.equals(c3)) {
-                armies = 12;
-            }
-            //2 wildcards, or a wildcard and two different
-            else {
-                armies = 0;
-            }
+    private Card getCard(List<Card> cards, String type) {
+        List<Card> matching = getCards(cards, type);
+        return matching.isEmpty() ? null : matching.get(0);
+    }
+
+    private List<Card> getCards(List<Card> cards, String type) {
+        return cards.stream().filter(c -> c.getType().equals(type)).collect(toList());
+    }
+
+    private int countUnique(List<Card> cards) {
+        return cards.stream().map(c -> c.getType()).collect(toSet()).size();
+    }
+
+    private List<Card> firstOfEachType(List<Card> cards) {
+        return asList(getCardOrWildcard(cards, CANNON), getCardOrWildcard(cards, CAVALRY), getCardOrWildcard(cards, INFANTRY));
+    }
+
+    public int getTradeAbsValue(List<String> types, int cardMode) {
+        switch (cardMode) {
+            case CARD_INCREASING_SET: return increasingArmies(types);
+            case CARD_FIXED_SET: return fixedArmies(types);
+            case CARD_ITALIANLIKE_SET:
+            default:
+                return italianLikeArmies(types);
         }
-        return armies;
+    }
+
+    private int italianLikeArmies(List<String> types) {
+        if (areAllSame(types))
+            switch (sameSetType(types)) {
+                case CAVALRY: return 8;
+                case INFANTRY: return 6;
+                case CANNON: return 4;
+                default: return 0; // 3 wildcards
+            }
+        if (!hasWildcard(types) && areAllDifferent(types))
+            return 10;
+        if (areAllSameWithOneWildcard(types))
+            return 12;
+        return 0; //2 wildcards or wildcard + two different
+    }
+
+    private int fixedArmies(List<String> types) {
+        if (areAllSame(types) || areAllSameWithOneWildcard(types))
+            switch (sameSetType(types)) {
+                case INFANTRY: return 4;
+                case CAVALRY: return 6;
+                case CANNON: return 8;
+                default: return 12; // 3 wildcards
+            }
+        if (count(types, WILDCARD) == 2 || areAllDifferent(types))
+            return 10;
+        return 0;
+    }
+
+    private boolean areAllSameWithOneWildcard(List<String> types) {
+        return count(types, WILDCARD) == 1 && areAllSame(remove(types, WILDCARD));
+    }
+
+    private String sameSetType(List<String> types) {
+        List<String> results = remove(types, WILDCARD);
+        return results.isEmpty() ? WILDCARD : results.get(0);
+    }
+
+    private boolean areAllDifferent(List<String> types) {
+        return new HashSet<>(types).size() == 3;
+    }
+
+    private boolean areAllSame(List<String> types) {
+        return new HashSet<>(types).size() == 1;
+    }
+
+    private boolean hasWildcard(List<String> types) {
+        return count(types, WILDCARD) > 0;
+    }
+
+    private List<String> remove(List<String> types, String type) {
+        return types.stream().filter(t -> !t.equals(type)).collect(toList());
+    }
+
+    private long count(List<String> types, String type) {
+        return types.stream().filter(c -> c.equals(type)).count();
+    }
+
+    private int increasingArmies(List<String> types) {
+        if (hasWildcard(types) || areAllSame(types) || areAllDifferent(types))
+            return getNewCardState();
+        return 0;
     }
 
     public int getNewCardState() {
-
-        if (cardState < 4) {
+        if (cardState < 4)
             return cardState + 4;
-        } else if (cardState < 12) {
+        if (cardState < 12)
             return cardState + 2;
-        } else if (cardState < 15) {
+        if (cardState < 15)
             return cardState + 3;
-        } else {
-            return cardState + 5;
-        }
-
-    }
-
-    private Card getCard(Map<String, List<Card>> cardTypes, String name) {
-        List<Card> type = cardTypes.get(name);
-        if (type != null) {
-            return type.get(0);
-        }
-        return null;
+        return cardState + 5;
     }
 
     public int getCardMode() {

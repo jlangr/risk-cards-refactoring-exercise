@@ -2,7 +2,7 @@
 
 Your job: clean up the code as much as you can stand.
 
-This is "real" code, i.e. actually used in a production piece of working open source software. It is what it is; please do not judge (it is not mine, either).
+This is "real" code, i.e. actually used in a production piece of working open source software. It is what it is; please do not judge (it is not mine, either). Note that it's a little worse than it appeared in production--I simply inlined a few methods to add a little fun to the exercise.
 
 There are tests, I believe they are sufficient, but I could be wrong. (Maybe a code coverage run would tell more.)
 
